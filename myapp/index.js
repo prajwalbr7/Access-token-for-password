@@ -29,33 +29,40 @@ const initializeDBAndServer = async () => {
 };
 initializeDBAndServer();
 
-// Get Books API
-app.get("/books/", async (request, response) => {
-  const authHeader = request.headers["authorization"];
+//AuthenticationToken
+const authenticateToken = (request, response, next) => {
   let jwtToken;
+  const authHeader = request.headers["authorization"];
   if (authHeader !== undefined) {
     jwtToken = authHeader.split(" ")[1];
   }
   if (jwtToken === undefined) {
     response.status(401);
-    response.send("Invalid Token");
+    response.send("Invalid JWT Token");
   } else {
-    jwt.verify(jwtToken, "myScreat", async (error, payload) => {
+    jwt.verify(jwtToken, "MY_SECRET_TOKEN", async (error, payload) => {
       if (error) {
+        response.status(401);
         response.send("Invalid JWT Token");
       } else {
-        const getBooksQuery = `
-                SELECT
-                    *
-                FROM
-                    book
-                ORDER BY
-                    book_id;`;
-        const booksArray = await db.all(getBooksQuery);
-        response.send(booksArray);
+        request.username = payload.username;
+        next();
       }
     });
   }
+};
+
+// Get Books API
+app.get("/books/", authenticateToken, async (request, response) => {
+  const getBooksQuery = `
+   SELECT
+    *
+   FROM
+    book
+   ORDER BY
+    book_id;`;
+  const booksArray = await db.all(getBooksQuery);
+  response.send(booksArray);
 });
 
 // User Register API
@@ -109,11 +116,17 @@ app.post("/login/", async (request, response) => {
     const isPasswordMatched = await bcrypt.compare(password, dbUser.password);
     if (isPasswordMatched === true) {
       const payload = { username: username };
-      const jwtToken = jwt.sign(payload, "myScreat");
+      const jwtToken = jwt.sign(payload, "MY_SECRET_TOKEN");
       response.send(jwtToken);
     } else {
       response.status(400);
       response.send("Invalid Password");
     }
   }
+});
+app.get("/profile/", authenticateToken, async (request, response) => {
+  let { username } = request;
+  const selectUserQuery = `SELECT * FROM user WHERE username = '${username}'`;
+  const userDetails = await db.get(selectUserQuery);
+  response.send(userDetails);
 });
